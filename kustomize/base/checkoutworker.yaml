@@ -1,0 +1,87 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkoutworker
+  labels:
+    app: checkoutworker
+spec:
+  selector:
+    matchLabels:
+      app: checkoutworker
+  template:
+    metadata:
+      labels:
+        app: checkoutworker
+    spec:
+      serviceAccountName: checkoutworker
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: worker
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+          image: us-east4-docker.pkg.dev/treedy-temporal-store-demo/containers/checkoutworker:v0.10.7-tmprl
+          env:
+          - name: PORT
+            value: "5050"
+          - name: PRODUCT_CATALOG_SERVICE_ADDR
+            value: "productcatalogservice:3550"
+          - name: SHIPPING_SERVICE_ADDR
+            value: "shippingservice:50051"
+          - name: PAYMENT_SERVICE_ADDR
+            value: "paymentservice:50051"
+          - name: EMAIL_SERVICE_ADDR
+            value: "emailservice:5000"
+          - name: CURRENCY_SERVICE_ADDR
+            value: "currencyservice:7000"
+          - name: CART_SERVICE_ADDR
+            value: "cartservice:7070"
+          - name: TEMPORAL_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: temporal-key
+                key: TEMPORAL_API_KEY
+          - name: TEMPORAL_ADDRESS
+            valueFrom:
+              configMapKeyRef:
+                name: temporal-config
+                key: TEMPORAL_ADDRESS
+          - name: TEMPORAL_NAMESPACE
+            valueFrom:
+              configMapKeyRef:
+                name: temporal-config
+                key: TEMPORAL_NAMESPACE
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: checkoutworker

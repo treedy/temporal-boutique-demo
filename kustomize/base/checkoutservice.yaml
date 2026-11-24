@@ -42,7 +42,8 @@ spec:
                 - ALL
             privileged: false
             readOnlyRootFilesystem: true
-          image: us-central1-docker.pkg.dev/online-boutique-ci/microservices-demo/checkoutservice:v0.10.7
+          image: us-east4-docker.pkg.dev/treedy-temporal-store-demo/containers/checkoutservice:v0.10.7-tmprl
+          # image: us-central1-docker.pkg.dev/online-boutique-ci/microservices-demo/checkoutservice:v0.10.7
           ports:
           - containerPort: 5050
           readinessProbe:
@@ -66,6 +67,21 @@ spec:
             value: "currencyservice:7000"
           - name: CART_SERVICE_ADDR
             value: "cartservice:7070"
+          - name: TEMPORAL_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: temporal-key
+                key: TEMPORAL_API_KEY
+          - name: TEMPORAL_ADDRESS
+            valueFrom:
+              configMapKeyRef:
+                name: temporal-config
+                key: TEMPORAL_ADDRESS
+          - name: TEMPORAL_NAMESPACE
+            valueFrom:
+              configMapKeyRef:
+                name: temporal-config
+                key: TEMPORAL_NAMESPACE
           resources:
             requests:
               cpu: 100m
@@ -93,3 +109,11 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: checkoutservice
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-config
+data:
+  TEMPORAL_ADDRESS: "orders.idxzm.tmprl.cloud:7233"
+  TEMPORAL_NAMESPACE: "orders.idxzm"

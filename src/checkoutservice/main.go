@@ -21,6 +21,9 @@ import (
 	"os"
 	"time"
 
+	tmprl "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/tmprl"
+	// "tmprl"
+
 	"cloud.google.com/go/profiler"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -40,6 +43,9 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/contrib/envconfig"
 )
 
 const (
@@ -227,12 +233,65 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 	return status.Errorf(codes.Unimplemented, "health check via Watch not implemented")
 }
 
+func (cs *checkoutService) runWorkflow(ctx context.Context, req *pb.PlaceOrderRequest, orderID *string) (bool, error) {
+	opts, err := envconfig.LoadDefaultClientOptions()
+	log.Info("client options:", opts)
+	c, err := client.Dial(opts)
+
+	if err != nil {
+		log.Fatalln("Unable to create client", err)
+	}
+	defer c.Close()
+
+	wfOptions := client.StartWorkflowOptions{
+		ID:        *orderID,
+		TaskQueue: tmprl.OrderQueue,
+	}
+
+	c.ExecuteWorkflow(ctx, wfOptions, tmprl.PlaceOrderWorkflow, req)
+
+	return true, nil
+}
+
+/*
+// Network debug method
+func (cs *checkoutService) lookup() {
+	addr := os.Getenv("TEMPORAL_ADDRESS")
+	ips, err := net.LookupIP(strings.Split(addr, ":")[0])
+
+	if err != nil {
+		log.Errorf("DNS lookup failed: %v", err)
+	}
+	fmt.Printf("IP addresses for %s:\n", addr)
+	for _, ip := range ips {
+		fmt.Printf("- %s\n", ip.String())
+	}
+
+	timeout := 3 * time.Second
+
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		fmt.Printf("Connection failed: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	fmt.Printf("Successfully connected to %s\n", addr)
+}
+*/
+
 func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
+	// cs.lookup()
 
 	orderID, err := uuid.NewUUID()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate order uuid")
+	}
+	orderIDString := orderID.String()
+	_, wferr := cs.runWorkflow(ctx, req, &orderIDString)
+	if wferr != nil {
+		return nil, wferr
 	}
 
 	prep, err := cs.prepareOrderItemsAndShippingQuoteFromCart(ctx, req.UserId, req.UserCurrency, req.Address)
