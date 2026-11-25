@@ -248,9 +248,11 @@ func (cs *checkoutService) runWorkflow(ctx context.Context, req *pb.PlaceOrderRe
 		TaskQueue: tmprl.OrderQueue,
 	}
 
-	c.ExecuteWorkflow(ctx, wfOptions, tmprl.PlaceOrderWorkflow, req)
+	wf, err := c.ExecuteWorkflow(ctx, wfOptions, tmprl.PlaceOrderWorkflow, req)
+	success := false
+	err = wf.Get(ctx, &success)
 
-	return true, nil
+	return success, nil
 }
 
 /*
