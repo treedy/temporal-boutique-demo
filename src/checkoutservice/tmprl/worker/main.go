@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -32,7 +33,10 @@ func main() {
 	})
 
 	w.RegisterWorkflow(tmprl.PlaceOrderWorkflow)
-	w.RegisterActivity(tmprl.GetUserCart)
+	// w.RegisterActivity(tmprl.GetUserCart)
+	ctx := context.Background()
+	ca := tmprl.NewCheckoutActivies(ctx, opts.Logger)
+	w.RegisterActivity(ca)
 
 	err = w.Run(worker.InterruptCh())
 	if err != nil {

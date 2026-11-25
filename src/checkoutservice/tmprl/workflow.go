@@ -1,4 +1,3 @@
-// package "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/tmprl"
 package tmprl
 
 import (
@@ -24,21 +23,33 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 		return false, err
 	}
 
-	var orderItems []*pb.CartItem
-	err = workflow.ExecuteActivity(ctx, GetUserCart, req.UserId).Get(ctx, &orderItems)
+	var cartItems []*pb.CartItem
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).GetUserCart, req.UserId).Get(ctx, &cartItems)
 	if err != nil {
 		logger.Error("Failed to get cart", "for user", req.UserId)
 		return false, err
-	} else {
-		if len(orderItems) < 1 {
+	} else { // Remove else when implementing next steps
+		if len(cartItems) < 1 {
 			logger.Error("No items in cart", "ID", req.UserId)
-		}
-		for _, item := range orderItems {
-			logger.Info("Item in cart", "Item:", item.String())
 		}
 	}
 
 	logger.Debug("Continuing for order", "ID", orderID)
+
+	var orderItems []*pb.OrderItem
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).PrepOrderItems, cartItems).Get(ctx, &orderItems)
+	if err != nil {
+		logger.Error("Failed to prep items", "for order", orderID)
+		return false, err
+	} else { // Remove else when implementing next steps
+		if len(orderItems) < 1 {
+			logger.Error("No items in order", "ID", orderID)
+		}
+		for _, pricedItem := range orderItems {
+			logger.Debug("", "Priced Item", pricedItem.String())
+
+		}
+	}
 
 	return true, nil
 }
