@@ -20,7 +20,6 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 
 	orderID, err := uuid.NewUUID()
 	if err != nil {
-		// return nil, status.Errorf(codes.Internal, "failed to generate order uuid")
 		logger.Error("failed to generate order uuid", "error:", err.Error())
 		return false, err
 	}
@@ -28,13 +27,18 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 	var orderItems []*pb.CartItem
 	err = workflow.ExecuteActivity(ctx, GetUserCart, req.UserId).Get(ctx, &orderItems)
 	if err != nil {
-		logger.Error("Failed to get cart")
+		logger.Error("Failed to get cart", "for user", req.UserId)
 		return false, err
 	} else {
+		if len(orderItems) < 1 {
+			logger.Error("No items in cart", "ID", req.UserId)
+		}
 		for _, item := range orderItems {
 			logger.Info("Item in cart", "Item:", item.String())
 		}
 	}
+
+	logger.Debug("Continuing for order", "ID", orderID)
 
 	return true, nil
 }

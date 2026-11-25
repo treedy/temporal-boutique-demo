@@ -1,20 +1,27 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 
 	tmprl "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/tmprl"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/contrib/envconfig"
+	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
 )
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug, // Explicitly enable Debug logs (default SDK level is Warn)
+	}))
+
 	opts, err := envconfig.LoadDefaultClientOptions()
+	opts.Logger = log.NewStructuredLogger(logger)
 	c, err := client.Dial(opts)
 
 	if err != nil {
-		log.Fatalln("Unable to create client", err)
+		logger.Error("Unable to create client", "error", err)
 	}
 	defer c.Close()
 
@@ -25,6 +32,6 @@ func main() {
 
 	err = w.Run(worker.InterruptCh())
 	if err != nil {
-		log.Fatalln("Unable to start worker", err)
+		logger.Error("Unable to start worker", "error", err)
 	}
 }
