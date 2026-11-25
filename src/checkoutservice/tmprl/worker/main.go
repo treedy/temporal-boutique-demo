@@ -5,8 +5,10 @@ import (
 	"os"
 
 	tmprl "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/tmprl"
+
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/contrib/envconfig"
+	"go.temporal.io/sdk/contrib/sysinfo"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
 )
@@ -25,7 +27,9 @@ func main() {
 	}
 	defer c.Close()
 
-	w := worker.New(c, tmprl.OrderQueue, worker.Options{})
+	w := worker.New(c, tmprl.OrderQueue, worker.Options{
+		SysInfoProvider: sysinfo.SysInfoProvider(),
+	})
 
 	w.RegisterWorkflow(tmprl.PlaceOrderWorkflow)
 	w.RegisterActivity(tmprl.GetUserCart)
