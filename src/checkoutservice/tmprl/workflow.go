@@ -37,7 +37,7 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 	logger.Debug("Continuing for order", "ID", orderID)
 
 	var orderItems []*pb.OrderItem
-	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).PrepOrderItems, cartItems).Get(ctx, &orderItems)
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).PrepOrderItems, cartItems, req.UserCurrency).Get(ctx, &orderItems)
 	if err != nil {
 		logger.Error("Failed to prep items", "for order", orderID)
 		return false, err

@@ -68,20 +68,16 @@ func (ca *CheckoutActivities) PrepOrderItems(ctx context.Context, items []*pb.Ca
 	return out, nil
 }
 
-// Currency converter is currently broken?
 func (ca *CheckoutActivities) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
-	return from, nil
-	/*
-		ca.logger.Debug("Converting", "from", from, "to", toCurrency)
-		result, err := pb.NewCurrencyServiceClient(ca.currencySvcConn).Convert(ctx, &pb.CurrencyConversionRequest{
-			From:   from,
-			ToCode: toCurrency})
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert currency: %+v", err)
-		}
-		ca.logger.Debug("Conversion done.", "result", result)
-		return result, err
-	*/
+	ca.logger.Debug("Converting", "from", from, "to", toCurrency)
+	result, err := pb.NewCurrencyServiceClient(ca.currencySvcConn).Convert(ctx, &pb.CurrencyConversionRequest{
+		From:   from,
+		ToCode: toCurrency})
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert currency: %+v", err)
+	}
+	ca.logger.Debug("Conversion done.", "result", result)
+	return result, err
 }
 
 // GRPC Related functions
