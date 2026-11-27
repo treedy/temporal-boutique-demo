@@ -48,6 +48,7 @@ func (ca *CheckoutActivities) GetUserCart(ctx context.Context, userID string) ([
 	return cart.GetItems(), nil
 }
 
+// ACTIVITY: PrepOrderItems
 func (ca *CheckoutActivities) PrepOrderItems(ctx context.Context, items []*pb.CartItem, userCurrency string) ([]*pb.OrderItem, error) {
 	out := make([]*pb.OrderItem, len(items))
 	cl := pb.NewProductCatalogServiceClient(ca.productCatalogSvcConn)
@@ -66,6 +67,21 @@ func (ca *CheckoutActivities) PrepOrderItems(ctx context.Context, items []*pb.Ca
 			Cost: price}
 	}
 	return out, nil
+}
+
+// ACTIVITY: QuoteShipping
+func (ca *CheckoutActivities) QuoteShipping(ctx context.Context, address *pb.Address, items []*pb.CartItem, userCurrency string) (*pb.Money, error) {
+	shippingQuote, err := pb.NewShippingServiceClient(ca.shippingSvcConn).
+		GetQuote(ctx, &pb.GetQuoteRequest{
+			Address: address,
+			Items:   items})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get shipping quote: %+v", err)
+	}
+
+	usdAmount := shippingQuote.GetCostUsd()
+	return ca.convertCurrency(ctx, usdAmount, userCurrency)
+
 }
 
 func (ca *CheckoutActivities) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {

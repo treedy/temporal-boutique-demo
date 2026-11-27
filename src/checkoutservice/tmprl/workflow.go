@@ -23,6 +23,7 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 		return false, err
 	}
 
+	// GetUserCart
 	var cartItems []*pb.CartItem
 	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).GetUserCart, req.UserId).Get(ctx, &cartItems)
 	if err != nil {
@@ -34,8 +35,7 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 		}
 	}
 
-	logger.Debug("Continuing for order", "ID", orderID)
-
+	// PrepOrderItems
 	var orderItems []*pb.OrderItem
 	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).PrepOrderItems, cartItems, req.UserCurrency).Get(ctx, &orderItems)
 	if err != nil {
@@ -49,6 +49,16 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 			logger.Debug("", "Priced Item", pricedItem.String())
 
 		}
+	}
+
+	// QuoteShipping
+	var shippingCostLocalized *pb.Money
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).QuoteShipping, req.Address, cartItems, req.UserCurrency).Get(ctx, &shippingCostLocalized)
+	if err != nil {
+		logger.Error("Failed to get shipping costs")
+		return false, err
+	} else {
+		logger.Debug("Shipping", "Calcualted Cost", shippingCostLocalized)
 	}
 
 	return true, nil
