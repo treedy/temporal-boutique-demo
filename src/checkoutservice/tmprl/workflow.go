@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/genproto"
+	"github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/money"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/workflow"
 )
@@ -61,5 +62,44 @@ func PlaceOrderWorkflow(ctx workflow.Context, req *pb.PlaceOrderRequest) (bool, 
 		logger.Debug("Shipping", "Calcualted Cost", shippingCostLocalized)
 	}
 
+	// Calculate Total
+	total := pb.Money{CurrencyCode: req.UserCurrency,
+		Units: 0,
+		Nanos: 0}
+	total = money.Must(money.Sum(total, *shippingCostLocalized))
+	for _, it := range orderItems {
+		multPrice := money.MultiplySlow(*it.Cost, uint32(it.GetItem().GetQuantity()))
+		total = money.Must(money.Sum(total, multPrice))
+	}
+	// TODO(treedy): Return to customer for verificaiton
+
+	// Charge card (single step, no product reservation)
+	var txID string
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).ChargeCard, total, req.CreditCard).Get(ctx, &txID)
+	if err != nil {
+		// return false, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
+		logger.Error("Failed to charge card")
+		return false, err
+	}
+	logger.Info("payment went through", "transaction ID", txID)
+
+	// Ship the order
+	var shippingTrackingID string
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).ShipOrder, req.Address, cartItems).Get(ctx, &shippingTrackingID)
+
+	// Finalize the order
+	// Clears the user's cart and sends an email
+	orderResult := &pb.OrderResult{
+		OrderId:            orderID.String(),
+		ShippingTrackingId: shippingTrackingID,
+		ShippingCost:       shippingCostLocalized,
+		ShippingAddress:    req.Address,
+		Items:              orderItems,
+	}
+
+	err = workflow.ExecuteActivity(ctx, (*CheckoutActivities).FinalizeOrder, req, orderResult).Get(ctx, nil)
+
+	// _ = &pb.PlaceOrderResponse{Order: orderResult}
+	// return resp, nil
 	return true, nil
 }

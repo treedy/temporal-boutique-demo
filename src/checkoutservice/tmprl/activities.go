@@ -84,6 +84,49 @@ func (ca *CheckoutActivities) QuoteShipping(ctx context.Context, address *pb.Add
 
 }
 
+// ACTIVITY: ChargeCard
+func (ca *CheckoutActivities) ChargeCard(ctx context.Context, amount *pb.Money, paymentInfo *pb.CreditCardInfo) (string, error) {
+	paymentResp, err := pb.NewPaymentServiceClient(ca.paymentSvcConn).Charge(ctx, &pb.ChargeRequest{
+		Amount:     amount,
+		CreditCard: paymentInfo})
+	if err != nil {
+		return "", fmt.Errorf("could not charge the card: %+v", err)
+	}
+	return paymentResp.GetTransactionId(), nil
+
+}
+
+// ACTIVITY: ShipOrder
+func (ca *CheckoutActivities) ShipOrder(ctx context.Context, address *pb.Address, items []*pb.CartItem) (string, error) {
+	resp, err := pb.NewShippingServiceClient(ca.shippingSvcConn).ShipOrder(ctx, &pb.ShipOrderRequest{
+		Address: address,
+		Items:   items})
+	if err != nil {
+		return "", fmt.Errorf("shipment failed: %+v", err)
+	}
+	return resp.GetTrackingId(), nil
+}
+
+// ACTIVITY: FinalizeOrder
+func (ca *CheckoutActivities) FinalizeOrder(ctx context.Context, request *pb.PlaceOrderRequest, result *pb.OrderResult) error {
+	// Clear the cart
+	if _, err := pb.NewCartServiceClient(ca.cartSvcConn).EmptyCart(ctx, &pb.EmptyCartRequest{UserId: request.UserId}); err != nil {
+		return fmt.Errorf("failed to empty user cart during checkout: %+v", err)
+	}
+
+	// Email the order confirmation to the user
+	_, err := pb.NewEmailServiceClient(ca.emailSvcConn).SendOrderConfirmation(ctx, &pb.SendOrderConfirmationRequest{
+		Email: request.Email,
+		Order: result,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send order confirmation to %q: %+v", request.Email, err)
+	} else {
+		ca.logger.Debug("order confirmation email sent", "email", request.Email)
+	}
+	return nil
+}
+
 func (ca *CheckoutActivities) convertCurrency(ctx context.Context, from *pb.Money, toCurrency string) (*pb.Money, error) {
 	ca.logger.Debug("Converting", "from", from, "to", toCurrency)
 	result, err := pb.NewCurrencyServiceClient(ca.currencySvcConn).Convert(ctx, &pb.CurrencyConversionRequest{
