@@ -92,6 +92,7 @@ func (ca *CheckoutActivities) ChargeCard(ctx context.Context, amount *pb.Money, 
 	if err != nil {
 		return "", fmt.Errorf("could not charge the card: %+v", err)
 	}
+	ca.logger.Debug("Charged card.", "Amt", amount, "Card", paymentInfo)
 	return paymentResp.GetTransactionId(), nil
 
 }

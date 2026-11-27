@@ -35,7 +35,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/genproto"
-	money "github.com/GoogleCloudPlatform/microservices-demo/src/checkoutservice/money"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -233,7 +232,7 @@ func (cs *checkoutService) Watch(req *healthpb.HealthCheckRequest, ws healthpb.H
 	return status.Errorf(codes.Unimplemented, "health check via Watch not implemented")
 }
 
-func (cs *checkoutService) runWorkflow(ctx context.Context, req *pb.PlaceOrderRequest, orderID *string) (bool, error) {
+func (cs *checkoutService) runWorkflow(ctx context.Context, req *pb.PlaceOrderRequest, orderID *string) (*pb.OrderResult, error) {
 	opts, err := envconfig.LoadDefaultClientOptions()
 	log.Info("client options:", opts)
 	c, err := client.Dial(opts)
@@ -248,95 +247,37 @@ func (cs *checkoutService) runWorkflow(ctx context.Context, req *pb.PlaceOrderRe
 		TaskQueue: tmprl.OrderQueue,
 	}
 
-	wf, err := c.ExecuteWorkflow(ctx, wfOptions, tmprl.PlaceOrderWorkflow, req)
-	success := false
-	err = wf.Get(ctx, &success)
-
-	return success, nil
-}
-
-/*
-// Network debug method
-func (cs *checkoutService) lookup() {
-	addr := os.Getenv("TEMPORAL_ADDRESS")
-	ips, err := net.LookupIP(strings.Split(addr, ":")[0])
-
+	wf, err := c.ExecuteWorkflow(ctx, wfOptions, tmprl.PlaceOrderWorkflow, req, *orderID)
 	if err != nil {
-		log.Errorf("DNS lookup failed: %v", err)
+		log.Error("Workflow Execute failed: ", err)
+		return nil, err
 	}
-	fmt.Printf("IP addresses for %s:\n", addr)
-	for _, ip := range ips {
-		fmt.Printf("- %s\n", ip.String())
-	}
-
-	timeout := 3 * time.Second
-
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	var orderResult *pb.OrderResult
+	err = wf.Get(ctx, &orderResult)
 	if err != nil {
-		fmt.Printf("Connection failed: %v\n", err)
-		return
+		log.Error("Couldn't get OrderResults: ", err)
+		return nil, err
 	}
-	defer conn.Close()
 
-	fmt.Printf("Successfully connected to %s\n", addr)
+	return orderResult, nil
 }
-*/
 
 func (cs *checkoutService) PlaceOrder(ctx context.Context, req *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	log.Infof("[PlaceOrder] user_id=%q user_currency=%q", req.UserId, req.UserCurrency)
-	// cs.lookup()
 
 	orderID, err := uuid.NewUUID()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate order uuid")
 	}
 	orderIDString := orderID.String()
-	_, wferr := cs.runWorkflow(ctx, req, &orderIDString)
+	orderResult, wferr := cs.runWorkflow(ctx, req, &orderIDString)
 	if wferr != nil {
+		log.Error("Failed to get orderResult", wferr)
 		return nil, wferr
 	}
 
-	prep, err := cs.prepareOrderItemsAndShippingQuoteFromCart(ctx, req.UserId, req.UserCurrency, req.Address)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
-	total := pb.Money{CurrencyCode: req.UserCurrency,
-		Units: 0,
-		Nanos: 0}
-	total = money.Must(money.Sum(total, *prep.shippingCostLocalized))
-	for _, it := range prep.orderItems {
-		multPrice := money.MultiplySlow(*it.Cost, uint32(it.GetItem().GetQuantity()))
-		total = money.Must(money.Sum(total, multPrice))
-	}
-
-	txID, err := cs.chargeCard(ctx, &total, req.CreditCard)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to charge card: %+v", err)
-	}
-	log.Infof("payment went through (transaction_id: %s)", txID)
-
-	shippingTrackingID, err := cs.shipOrder(ctx, req.Address, prep.cartItems)
-	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "shipping error: %+v", err)
-	}
-
-	_ = cs.emptyUserCart(ctx, req.UserId)
-
-	orderResult := &pb.OrderResult{
-		OrderId:            orderID.String(),
-		ShippingTrackingId: shippingTrackingID,
-		ShippingCost:       prep.shippingCostLocalized,
-		ShippingAddress:    req.Address,
-		Items:              prep.orderItems,
-	}
-
-	if err := cs.sendOrderConfirmation(ctx, req.Email, orderResult); err != nil {
-		log.Warnf("failed to send order confirmation to %q: %+v", req.Email, err)
-	} else {
-		log.Infof("order confirmation email sent to %q", req.Email)
-	}
 	resp := &pb.PlaceOrderResponse{Order: orderResult}
+	log.Debug("orderResult", orderResult)
 	return resp, nil
 }
 
